@@ -12,7 +12,7 @@ load_dotenv()
 email_pattern = r"^\s*([a-zA-Z0-9_\-\.]+)@([a-zA-Z0-9_\-\.]+)\.([a-zA-Z]{2,5})\s*$"
 
 coaches_data = {}
-emailed_group = []
+athlete_data = []
 
 user_email = os.getenv("email_address")
 user_password = os.getenv("email_password")
@@ -45,7 +45,7 @@ def pronoun_selector2(coach_contact):
             return "she wants" 
     return "they want"     
 
-def create_email_content(coach_contact):
+def create_email_content_coach(coach_contact):
     content = "Good afternoon Coach " + coaches_data[coach_contact][0]['coach_name'] + ",\n\n" + "I am Ballard Suiter the jumps and sprints coach at Frostburg State University. I would like to get in contact with"
     for athlete in coaches_data[coach_contact]:
         if len(coaches_data[coach_contact]) == 1:
@@ -62,15 +62,23 @@ def create_email_content(coach_contact):
     
     return content        
 
-def email_coaches():
-    # Set up the SMTP server
-    smtp_server = "smtp.office365.com"
-    smtp_port = 587
-    server = smtplib.SMTP(smtp_server, smtp_port)
-    server.starttls()
-    server.login(user_email, user_password)
+def create_email_content_athlete(athlete):
+    content = "Hello " + athlete['name'].split()[0].capitalize().rstrip() + ",\n\n"
+    content += '''
+    I am coach Suiter the jumps and sprints coach at Frostburg. We are a D2 located in western Maryland with a school size around 3000 students. How it’s been described by other recruits “a small school with a big school feel”. 
+    
+    I got your contact information from your coach and wanted to reach out and express our interest in you. Based on your performances you have achieved over your career we would like to reach out with the opportunity to be a part of our Track and Field Family. 
+    
+    So do me a favor, if you want to talk some more, just send me an email and say, “I’m interested.” No commitments we’ll just talk some more, okay? 
 
-    with open("2025 Maryland Senior List.csv", newline='') as csvfile:
+    Thanks,
+    Ballard Suiter, MBA\nAssistant Coach Track & Field\nJumps/Multis\nFrostburg State University\nC: 317-748-8043\nUSTFCCCA Level 1 Jumps Specialist
+    '''
+
+    return content
+
+def parse_file():
+     with open("2025 Maryland Senior List.csv", newline='') as csvfile:
         reader = csv.reader(csvfile, delimiter=',')
         for row in reader:
             gender = set_null_for_non_breaking_space(row[0])
@@ -92,10 +100,28 @@ def email_coaches():
                         "phone": phone,
                         "coach_name": coach_name.split()[1].capitalize().rstrip()
                     })
+                if email != '' and re.match(email_pattern, email):
+                    athlete_data.append({
+                        "name": name,
+                        "email": email,
+                        "phone": phone,
+                        "coach_name": coach_name
+                    })
+
+def email_coaches():
+    emailed_group = []
+    # Set up the SMTP server
+    smtp_server = "smtp.office365.com"
+    smtp_port = 587
+    server = smtplib.SMTP(smtp_server, smtp_port)
+    server.starttls()
+    server.login(user_email, user_password)
+
+    parse_file()
 
     for coach_contact in coaches_data:
         subject = "Frostburg State T&F Recruiting"
-        body = create_email_content(coach_contact)
+        body = create_email_content_coach(coach_contact)
         # Create the author with a non-ASCII name and an email address
         author = formataddr((str(Header(u'Ballard T Suiter', 'utf-8')), user_email))
         
@@ -118,7 +144,48 @@ def email_coaches():
             print(f"Failed to send email to {coach_contact}: {e}")
 
     server.quit()
+
+    return emailed_group
   
+
+def email_athletes():
+    emailed_group = []
+    # Set up the SMTP server
+    smtp_server = "smtp.office365.com"
+    smtp_port = 587
+    server = smtplib.SMTP(smtp_server, smtp_port)
+    server.starttls()
+    server.login(user_email, user_password)
+
+    parse_file()
+
+    for athlete in athlete_data:
+        subject = "Frostburg State T&F Recruiting"
+        body = create_email_content_athlete(athlete)
+        # Create the author with a non-ASCII name and an email address
+        author = formataddr((str(Header(u'Ballard T Suiter', 'utf-8')), user_email))
+        
+        # Create a MIME multipart message
+        msg = MIMEMultipart('alternative')
+        msg['From'] = author
+        msg['To'] = athlete['email']  # Assuming athelete[1] is an email address
+        msg['Subject'] = subject
+        
+        # Attach the body content. If your content is HTML, use MIMEText with 'html', else 'plain' for plain text.
+        from email.mime.text import MIMEText
+        msg.attach(MIMEText(body, 'plain'))
+        
+        try:
+            # Send the email. Note: convert the msg object to a string before sending
+            # server.sendmail(author, coach_contact, msg.as_string())
+            emailed_group.append(athlete['email'])
+            print(f"{athlete[1]}")
+        except Exception as e:
+            print(f"Failed to send email to {athlete['email']}: {e}")
+
+    server.quit()
+
+    return emailed_group
 
 
 # Assuming your layout looks something like this
@@ -135,9 +202,26 @@ while True:
     
     if event == 'Coaches':
         # Run your email sending program here
-        # Let's assume it returns a list of emails that were sent
-        email_coaches()
-        emails_sent = emailed_group
+        emails_sent = email_coaches()
+        
+        # Create a new layout for the popup window
+        layout_popup = [[sg.Text('')],
+                    [sg.Column([[sg.Multiline('\n'.join(emails_sent), size=(50, len(emails_sent)), key='-OUT-')]], justification='center')],
+                    [sg.Text('')]]        
+        # Create a new window with the popup layout
+        window_popup = sg.Window('Emails Sent', layout_popup, size=(800, 600))
+        
+        # Read events from the popup window
+        while True:
+            event_popup, values_popup = window_popup.read()
+            if event_popup == sg.WIN_CLOSED:
+                break
+        
+        # Don't forget to close the popup window
+        window_popup.close()
+    elif event == 'Athletes':
+        # Run your email sending program here
+        emails_sent = email_athletes()
         
         # Create a new layout for the popup window
         layout_popup = [[sg.Text('')],
